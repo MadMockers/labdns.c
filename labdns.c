@@ -26,7 +26,24 @@
 
 static int debug = 0;
 
-static void on_ip_notification(char *interface, uint32_t ip)
+static int is_private_addr(uint32_t addr)
+{
+    uint32_t private[4][2] = {
+        { 0x7F000000, 0xFF000000 }, // 127.0.0.0   /8
+        { 0x0A000000, 0xFF000000 }, // 10.0.0.0    /8
+        { 0xAC100000, 0xFFF00000 }, // 172.16.0.0  /12
+        { 0xC0A80000, 0xFFFF0000 }, // 192.168.0.0 /16
+    };
+    int i;
+    for(i = 0;i < 3;i++)
+    {
+        if((htonl(addr) & private[i][1]) == private[i][0])
+            return 1;
+    }
+    return 0;
+}
+
+static void on_ip_notification(char *interface)
 {
     int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if(s == -1)
@@ -37,28 +54,81 @@ static void on_ip_notification(char *interface, uint32_t ip)
 
     struct ifreq ifr;
     strcpy(ifr.ifr_name, interface);
+
+    if(ioctl(s, SIOCGIFADDR, &ifr) == -1)
+    {
+        fprintf(stderr, "ioctl on DGRAM socket failed: %s (%d)\n", strerror(errno), errno);
+        close(s);
+        return;
+    }
+    uint32_t ip =
+        *(uint32_t*)&((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr;
+
     if(ioctl(s, SIOCGIFHWADDR, &ifr) == -1)
     {
         fprintf(stderr, "ioctl on DGRAM socket failed: %s (%d)\n", strerror(errno), errno);
+        close(s);
         return;
     }
 
-    char mac_addr[6];
+    close(s);
+
+    if(is_private_addr(ip))
+    {
+        fprintf(stderr, "Ignoring private address on interface %s\n", interface);
+        return;
+    }
+
+    unsigned char mac_addr[6];
     memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, sizeof(mac_addr));
     char s_mac_addr[128];
     snprintf(s_mac_addr, sizeof(s_mac_addr), "%02X:%02X:%02X:%02X:%02X:%02X",
-        (unsigned char)mac_addr[0],
-        (unsigned char)mac_addr[1],
-        (unsigned char)mac_addr[2],
-        (unsigned char)mac_addr[3],
-        (unsigned char)mac_addr[4],
-        (unsigned char)mac_addr[5]);
+        mac_addr[0],
+        mac_addr[1],
+        mac_addr[2],
+        mac_addr[3],
+        mac_addr[4],
+        mac_addr[5]);
 
-    fprintf(stderr, "%s: %d.%d.%d.%d\n", s_mac_addr,
-        (ip >> 24)&0xFF, 
-        (ip >> 16)&0xFF, 
+    fprintf(stderr, "%s; %s - %u.%u.%u.%u\n", interface, s_mac_addr,
+        (ip >>  0)&0xFF, 
         (ip >>  8)&0xFF, 
-        (ip >>  0)&0xFF);
+        (ip >> 16)&0xFF, 
+        (ip >> 24)&0xFF);
+}
+
+static void on_start(void)
+{
+    /* iterate interfaces now */
+    struct ifconf ifc;
+    char buf[1024];
+    int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    int ret;
+    if(s == -1)
+    {
+        fprintf(stderr, "Failed to create DGRAM socket: %s (%d)\n", strerror(errno), errno);
+        return;
+    }
+
+    ifc.ifc_len = sizeof(buf);
+    ifc.ifc_buf = buf;
+
+    ret = ioctl(s, SIOCGIFCONF, &ifc);
+    close(s);
+
+    if(ret == -1)
+    {
+        fprintf(stderr, "Failed to get list of interfaces\n");
+        close(s);
+        return;
+    }
+
+    struct ifreq *it = ifc.ifc_req;
+    struct ifreq *end = it + (ifc.ifc_len / sizeof(struct ifreq));
+    for(;it != end;it++)
+    {
+        on_ip_notification(it->ifr_name);
+    }
 }
 
 static void monitor(void)
@@ -110,10 +180,11 @@ static void monitor(void)
                 ipaddr = htonl(ipaddr);
 
                 on_ip_notification(
-                    if_indextoname(ifa->ifa_index, name), ipaddr);
+                    if_indextoname(ifa->ifa_index, name));
             }
         }
     }
+    close(nl);
 }
 
 static void daemonize(void)
@@ -195,5 +266,6 @@ int main(int argc, char *argv[])
         watchdog();
     }
 
+    on_start();
     monitor();
 }
