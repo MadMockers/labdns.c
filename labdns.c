@@ -1,4 +1,6 @@
 
+#define _BSD_SOURCE
+
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -34,8 +36,6 @@ static void on_ip_notification(char *interface, uint32_t ip)
     }
 
     struct ifreq ifr;
-    char buf[1024];
-
     strcpy(ifr.ifr_name, interface);
     if(ioctl(s, SIOCGIFHWADDR, &ifr) == -1)
     {
@@ -45,8 +45,8 @@ static void on_ip_notification(char *interface, uint32_t ip)
 
     char mac_addr[6];
     memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, sizeof(mac_addr));
-    char *s_mac_addr;
-    asprintf(&s_mac_addr, "%02X:%02X:%02X:%02X:%02X:%02X",
+    char s_mac_addr[128];
+    snprintf(s_mac_addr, sizeof(s_mac_addr), "%02X:%02X:%02X:%02X:%02X:%02X",
         (unsigned char)mac_addr[0],
         (unsigned char)mac_addr[1],
         (unsigned char)mac_addr[2],
@@ -59,8 +59,6 @@ static void on_ip_notification(char *interface, uint32_t ip)
         (ip >> 16)&0xFF, 
         (ip >>  8)&0xFF, 
         (ip >>  0)&0xFF);
-    
-    free(s_mac_addr);
 }
 
 static void monitor(void)
