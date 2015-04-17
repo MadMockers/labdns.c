@@ -169,6 +169,7 @@ static void watchdog(void)
                 exit(1); // Unexpected error
         }
     }
+    fprintf(stderr, "WatchDog: Spawning new process\n");
 }
 
 int main(int argc, char *argv[])
@@ -180,14 +181,14 @@ int main(int argc, char *argv[])
     if(fd == -1)
     {
         fprintf(stderr, "Failed to open 'labdns' shared memory\n");
-        exit(0);
+        return 1;
     }
 
     ftruncate(fd, 1);
     if(lockf(fd, F_TLOCK, 1) == -1)
     {
-        /* we're already running */
-        exit(0);
+        fprintf(stderr, "labdns is already running\n");
+        return 1;
     }
 
     if(!debug)
