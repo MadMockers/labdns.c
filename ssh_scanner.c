@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
     }
     network = htonl(inet_addr(argv[1]));
     mask    = htonl(inet_addr(argv[2]));
-    network &= ~mask;
+    network &= mask;
     cur_ip = network+1;
     ms_timeout = strtol(argv[4], NULL, 0);
 
