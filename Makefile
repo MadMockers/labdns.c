@@ -1,6 +1,10 @@
 
-labdns : labdns.c
-	gcc -o labdns labdns.c -lrt -pedantic -Wall -Werror -std=c99
+TARGETS=labdns ssh_scanner
+
+all : $(TARGETS)
+
+% : %.c
+	gcc -o $@ $^ -pthread -lrt -pedantic -Wall -Werror -std=c99
 
 clean :
-	rm labdns
+	rm $(TARGETS)
