@@ -155,6 +155,7 @@ int main(int argc, char *argv[])
     }
     network = htonl(inet_addr(argv[1]));
     mask    = htonl(inet_addr(argv[2]));
+    network &= ~mask;
     cur_ip = network+1;
 
     int i, thread_count = strtol(argv[3], NULL, 0);
