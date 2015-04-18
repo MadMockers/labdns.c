@@ -19,7 +19,7 @@
 
 static uint32_t network, mask, cur_ip;
 static pthread_mutex_t cur_ip_mtx = PTHREAD_MUTEX_INITIALIZER;
-static long timeout;
+static long ms_timeout;
 
 static inline uint32_t get_next_ip_locked(void)
 {
@@ -63,7 +63,7 @@ static void do_test(int s, struct sockaddr_in *addr)
         fd_set wfds;
         FD_ZERO(&wfds);
         FD_SET(s, &wfds);
-        struct timeval timeout = { 0, 25000 }; // 25ms
+        struct timeval timeout = { 0, ms_timeout * 1000 };
 
         int result = select(s+1, NULL, &wfds, NULL, &timeout);
         if(result == -1)
@@ -82,7 +82,7 @@ static void do_test(int s, struct sockaddr_in *addr)
     fd_set rfds;
     FD_ZERO(&rfds);
     FD_SET(s, &rfds);
-    struct timeval timeout = { 0, timeout * 1000 };
+    struct timeval timeout = { 0, ms_timeout * 1000 };
     int result = select(s+1, &rfds, NULL, NULL, &timeout);
     if(result == -1)
     {
@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
     mask    = htonl(inet_addr(argv[2]));
     network &= ~mask;
     cur_ip = network+1;
-    timeout = strtol(argv[4], NULL, 0);
+    ms_timeout = strtol(argv[4], NULL, 0);
 
     int i, thread_count = strtol(argv[3], NULL, 0);
     pthread_t threads[thread_count];
