@@ -76,7 +76,6 @@ static void do_test(int s, struct sockaddr_in *addr)
             return;
         }
     }
-    fcntl(s, F_SETFL, fcntl(s, F_GETFL) & ~O_NONBLOCK); // set blocking
 
     /* wait for data on read */
     fd_set rfds;
