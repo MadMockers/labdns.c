@@ -1,4 +1,6 @@
 
+#define _BSD_SOURCE
+
 #include <netinet/in.h>
 
 #include <arpa/inet.h>
@@ -71,13 +73,14 @@ static void on_found(char *ip)
         }
         else
         {
-            char *pp = *p;
-            char *strs[32];
+            char *pp = strdup(*p);
+            char *freeme = pp;
+            char *strs[64];
             int len = 0;
             int count = 0;
             int i;
             strs[count++] = pp;
-            for(;*pp && count < 32;pp++)
+            for(;*pp && count < 64;pp++)
             {
                 if(*pp == '\\')
                     continue;
@@ -96,14 +99,15 @@ static void on_found(char *ip)
             }
             char *arg = malloc(len+1);
             arg[len] = '\0';
-            char *ppp = arg;
+            pp = arg;
             free_array[free_count++] = arg;
             for(i = 0;i < count;i++)
             {
                 len = strlen(strs[i]);
-                memcpy(ppp, strs[i], len);
-                ppp += len;
+                memcpy(pp, strs[i], len);
+                pp += len;
             }
+            free(freeme);
             *p = arg;
         }
     }
