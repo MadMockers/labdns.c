@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -20,6 +21,8 @@
 static uint32_t network, mask, cur_ip;
 static pthread_mutex_t cur_ip_mtx = PTHREAD_MUTEX_INITIALIZER;
 static long ms_timeout;
+
+char **exec = NULL;
 
 static inline uint32_t get_next_ip_locked(void)
 {
@@ -39,6 +42,83 @@ static uint32_t get_next_ip(void)
     result = get_next_ip_locked();
     pthread_mutex_unlock(&cur_ip_mtx);
     return result;
+}
+
+static void on_found(char *ip)
+{
+    if(!exec)
+        return;
+
+    int argc = 0;
+    char **p, **argv = exec;
+    while(*(argv++)) argc++;
+    argc++;
+
+    if(!argc)
+        return;
+
+    p = argv = malloc(sizeof(char**)*argc);
+    memcpy(argv, exec, sizeof(char**)*argc);
+
+    int free_count = 0;
+    char *free_array[32];
+
+    for(;*p && free_count < 32;p++)
+    {
+        if(strcmp(*p, "{}") == 0)
+        {
+            *p = ip;
+        }
+        else
+        {
+            char *pp = *p;
+            char *strs[32];
+            int len = 0;
+            int count = 0;
+            int i;
+            strs[count++] = pp;
+            for(;*pp && count < 32;pp++)
+            {
+                if(*pp == '\\')
+                    continue;
+                if( *pp == '{' &&
+                    *(pp+1) == '}')
+                {
+                    *pp = '\0';
+                    strs[count++] = ip;
+                    strs[count++] = pp+2;
+                    pp++;
+                }
+            }
+            for(i = 0;i < count;i++)
+            {
+                len += strlen(strs[i]);
+            }
+            char *arg = malloc(len+1);
+            arg[len] = '\0';
+            char *ppp = arg;
+            free_array[free_count++] = arg;
+            for(i = 0;i < count;i++)
+            {
+                len = strlen(strs[i]);
+                memcpy(ppp, strs[i], len);
+                ppp += len;
+            }
+            *p = arg;
+        }
+    }
+
+    if(!fork())
+    {
+        execvp(argv[0], argv);
+        fprintf(stderr, "exec '%s' failed: %s (%d)\n", argv[0], strerror(errno), errno);
+        exit(0);
+    }
+
+    int i;
+    for(i = 0;i < free_count;i++)
+        free(free_array[i]);
+    free(argv);
 }
 
 static void do_test(int s, struct sockaddr_in *addr)
@@ -120,6 +200,8 @@ static void do_test(int s, struct sockaddr_in *addr)
             (ip>>24)&0xFF);
         /* do this as syscall, to be atomic */
         write(1, buf, len);
+        buf[len-1] = '\0';
+        on_found(buf);
     }
 }
 
@@ -149,11 +231,15 @@ void *worker(void *ctxt)
 
 int main(int argc, char *argv[])
 {
-    if(argc != 5)
+    if(argc < 5)
     {
-        fprintf(stderr, "Usage: %s <network> <netmask> <thread count> <timeout (ms)>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <network> <netmask> <thread count> <timeout (ms)> [execvp...]\n", argv[0]);
         return 1;
     }
+
+    signal(SIGCHLD, SIG_IGN); // Children automatically get reaped
+
+    exec = (argv+5);
     network = htonl(inet_addr(argv[1]));
     mask    = htonl(inet_addr(argv[2]));
     network &= mask;
@@ -170,8 +256,8 @@ int main(int argc, char *argv[])
     }
     for(i = 0;i < thread_count;i++)
     {
-        fprintf(stderr, "Joining thread %d\n", i);
         pthread_join(threads[i], NULL);
+        fprintf(stderr, "Joined thread %d\n", i);
     }
     return 0;
 }
