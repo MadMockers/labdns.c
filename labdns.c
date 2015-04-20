@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <libgen.h>
+#include <pthread.h>
 
 #include <net/if.h>
 #include <netinet/in.h>
@@ -18,6 +20,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 
 #include <asm/types.h>
 
@@ -241,6 +244,26 @@ static void watchdog(void)
     fprintf(stderr, "WatchDog: Spawning new process\n");
 }
 
+void check_stop_file(void)
+{
+    struct stat sb;
+    if(stat(".stop", &sb) == 0)
+    {
+        /* stop file exists! */
+        fprintf(stderr, "Stop file exists! Exitting\n");
+        exit(0);
+    }
+}
+
+void *stop_thread(void *ctxt)
+{
+    while(1)
+    {
+        check_stop_file();
+        sleep(60);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if(argc == 2 && strcmp(argv[1], "debug") == 0)
@@ -260,11 +283,19 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /* chdir to path of executable */
+    chdir(dirname(argv[0]));
+    check_stop_file();
+
     if(!debug)
     {
         daemonize();
         watchdog();
     }
+
+    pthread_t thread;
+    pthread_create(&thread, NULL, stop_thread, NULL);
+    pthread_detach(thread);
 
     on_start();
     monitor();
