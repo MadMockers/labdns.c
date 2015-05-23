@@ -38,7 +38,7 @@ static int is_private_addr(uint32_t addr)
         { 0xC0A80000, 0xFFFF0000 }, // 192.168.0.0 /16
     };
     int i;
-    for(i = 0;i < 3;i++)
+    for(i = 0;i < 4;i++)
     {
         if((htonl(addr) & private[i][1]) == private[i][0])
             return 1;
